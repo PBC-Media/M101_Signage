@@ -42,9 +42,13 @@
                                  full "$2,400,000" never outgrows its 1-of-3
                                  column at the gutter's width */
       --fs-lockup: 3.5vh;    /* "for" beside the mini campaign logo */
-      --fs-hero-base: 9vh;  /* starting size for the auto-fit cycle word; JS scales
-                                 it per word so every word fills the same width,
-                                 matching the reference mock-up's full-bleed type */
+      --fs-hero-base: 8.1vh;  /* size for the big cycling word ("Worship" / "Growth" /
+                                 "Hope" / "Forgiveness" etc). This is a single static
+                                 size for every word (the auto-fit-per-word JS that used
+                                 to scale each word individually isn't wired up -- see
+                                 the "fitCycleWord" note near CYCLE_WORDS in <script>).
+                                 If a future word clips off the right edge, lower this
+                                 value (it was 9vh before "Forgiveness" started clipping). */
     }
 
     *, *::before, *::after { box-sizing: border-box; }
@@ -109,9 +113,9 @@
       display: block;
     }
 
-    /* ================= ZONE 2 -- data vis: 6 units (the priority element) ================= */
+    /* ================= ZONE 2 -- data vis: 7.25 units (stats + Give Now + floorplan, the priority element) ================= */
     .datavis-section {
-      flex: 0 0 calc(var(--unit) * 6);
+      flex: 0 0 calc(var(--unit) * 7.25);
       display: flex;
       flex-direction: column;
       justify-content: flex-end;
@@ -258,21 +262,26 @@
       50%      { transform: scale(1.03); }
     }
     .qr-frame {
-  --qr-size: calc(var(--unit) * 1.25 * 0.72);
-  width: var(--qr-size);
-  height: var(--qr-size);
-  background: var(--white);
-  border-radius: 10px;
-  padding: calc(var(--qr-size) * 0.08);
-  box-shadow: 0 0 0 rgba(36,178,185,0);
-  animation: qrGlow 3.4s ease-in-out infinite;
-}
-.qr-frame img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-}
+      --qr-size: calc(var(--unit) * 1.25 * 0.72);
+      width: var(--qr-size);
+      height: var(--qr-size);
+      background: var(--white);
+      border-radius: 10px;
+      /* a CSS percentage padding resolves against the CONTAINING BLOCK's
+         width, not this element's own size -- since the parent grid column
+         is much wider than this frame, "8%" would blow out to roughly the
+         whole frame. calc() against --qr-size gives the intended ~8% of
+         the frame itself instead. */
+      padding: calc(var(--qr-size) * 0.08);
+      box-shadow: 0 0 0 rgba(36,178,185,0);
+      animation: qrGlow 3.4s ease-in-out infinite;
+    }
+    .qr-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
     @keyframes qrGlow {
       0%, 100% { box-shadow: 0 0 0 rgba(36,178,185,0); }
       50%      { box-shadow: 0 0 3vh rgba(36,178,185,.6); }
@@ -550,7 +559,26 @@
         <div class="meter-label" id="meter-label">0%</div>
       </div>
 
-      <div class="floorplan-wrap reveal reveal-5">
+      <!-- ================= ZONE 3: GIVE NOW -- now nested ahead of the floorplan so the QR sits higher on screen ================= -->
+  <section class="cta-section reveal reveal-5">
+        <div class="cta-grid">
+          <div class="cta-col-label">
+            <div class="cta-heading">Give Now</div>
+          </div>
+          <div class="cta-col-qr">
+            <div class="qr-frame">
+              <img src="Images/Make_Room_QR.png" alt="QR code to give online" style="width:100%; height:100%; object-fit:contain; display:block;">
+            </div>
+          </div>
+          <div class="cta-col-link">
+            <div class="cta-link-label">Give online</div>
+            <!-- PLACEHOLDER: replace with the real giving-page URL -->
+            <div class="cta-link">paradisetx.org/MakeRoom</div>
+          </div>
+        </div>
+      </section>
+
+      <div class="floorplan-wrap reveal reveal-6">
         <svg id="DataVisArt" viewBox="0 0 1800 1100" preserveAspectRatio="xMidYMid meet">
           <defs id="dynamic-defs">
             <linearGradient id="fill-template" x1="0" x2="0" y1="1" y2="0">
@@ -596,24 +624,6 @@
       </div>
     </section>
 
-    <!-- ================= ZONE 3: GIVE NOW -- left / middle / right thirds ================= -->
-<section class="cta-section reveal reveal-6">
-      <div class="cta-grid">
-        <div class="cta-col-label">
-          <div class="cta-heading">Give Now</div>
-        </div>
-        <div class="cta-col-qr">
-          <div class="qr-frame">
-            <img src="Images/Make_Room_QR.png" alt="QR code to give online" style="width:100%; height:100%; object-fit:contain; display:block;">
-          </div>
-        </div>
-        <div class="cta-col-link">
-          <div class="cta-link-label">Give online</div>
-          <!-- PLACEHOLDER: replace with the real giving-page URL -->
-          <div class="cta-link">paradisetx.org/MakeRoom</div>
-        </div>
-      </div>
-    </section>
 
   </div>
 
@@ -694,11 +704,17 @@
     });
 
     /*
-      "Make Room for ___" word cycle, overlaid on the photo. Each word is
-      auto-fit to the full available width (fitCycleWord), matching the
-      reference mock-up where the word always spans the frame regardless of
-      how many letters it has, rather than using one fixed font-size that
-      would leave short words small and clip long ones.
+      "Make Room for ___" word cycle, overlaid on the photo. NOTE: despite the
+      name, fitCycleWord below does NOT currently auto-fit each word to the
+      available width -- it's a stub that just sets the text. Every word
+      renders at the one static size set by --fs-hero-base in the CSS
+      (currently 8.1vh). HERO_MIN_VH/HERO_MAX_VH below are unused leftovers
+      from when per-word auto-fit sizing existed.
+
+      PRACTICAL UPSHOT: if a future word is too long and clips off the right
+      edge (as "Forgiveness" did on 2026-10-16), fix it by lowering
+      --fs-hero-base in the <style> block near the top of this file -- see
+      the ADB/Signage Quick Reference doc for the exact line.
 
       PLACEHOLDER LIST -- swap these for the real campaign words (send them
       over and I'll drop them in, or just edit this array directly in the
@@ -706,9 +722,9 @@
     */
     var CYCLE_WORDS = ['Worship', 'Growth', 'Hope', 'Forgiveness'];
     var cycleIdx = 0;
-    var HERO_BASE_VH = 15;   // matches --fs-hero-base
-    var HERO_MIN_VH = 6;
-    var HERO_MAX_VH = 24;
+    var HERO_BASE_VH = 8.1;  // unused -- kept in sync with --fs-hero-base for reference only
+    var HERO_MIN_VH = 6;     // unused leftover from a removed auto-fit feature
+    var HERO_MAX_VH = 24;    // unused leftover from a removed auto-fit feature
 
 function fitCycleWord(el, text) {
   el.textContent = text;
