@@ -638,9 +638,28 @@
 
       If the fetch fails (network hiccup, endpoint briefly down), this falls
       back to sample data so the sign stays visually intact rather than
-      showing a blank page.
+      showing a blank page -- but only before the first real load (see
+      refreshData below); a later poll failing just leaves the last good
+      numbers on screen instead of overwriting them with placeholder data.
+
+      REFRESH DESIGN (2026-10-16): the $ totals and room percentages are now
+      re-polled from inside this page on a timer (refreshData, below),
+      rather than relying on the signage app periodically reloading the
+      whole page. That's a deliberate fix for a real incident where the
+      app's WebView cached an old copy of this page after a deploy and kept
+      serving it even across a full TV power cycle -- a correct code push
+      doesn't help if the device showing it never actually re-fetches the
+      page. Polling the JSON endpoint in-page with cache:'no-store' keeps
+      the displayed DATA fresh regardless of whatever caching the app/WebView
+      does for the page itself. (A future HTML/CSS/layout change still
+      needs the TV to actually reload this page at least once to show up --
+      if that doesn't happen within a reasonable time on its own, clear the
+      signage app's cache on the TV, or see the ADB/Signage Quick Reference
+      doc's "No route to host" / cache notes.)
     */
     var DATA_URL = 'https://script.google.com/macros/s/AKfycbyOIfR4B6U2vxRrCMkQR8ZiJrqV-HfgCD89RVOOldgCrC8Okdp82jdNbbuW9nEeKa-7BA/exec?format=json';
+    var REFRESH_INTERVAL_MS = 5 * 60 * 1000;   // how often to re-poll for fresh $ totals/percentages (5 min)
+    var hasLoadedRealData = false;
     function renderData(data) {
       if (!data || !data.rooms || !data.globalStats) return;
 
@@ -678,13 +697,27 @@
       });
     }
 
-    document.addEventListener('DOMContentLoaded', function () {
-      fetch(DATA_URL)
+    function refreshData() {
+      // cache: 'no-store' -- always a real network hit for the DATA fetch,
+      // regardless of any HTTP caching the endpoint, WebView, or app might
+      // otherwise apply. This is what makes the periodic re-poll actually
+      // reliable rather than quietly serving stale numbers from cache.
+      fetch(DATA_URL, { cache: 'no-store' })
         .then(function (res) { return res.json(); })
-        .then(renderData)
+        .then(function (data) {
+          hasLoadedRealData = true;
+          renderData(data);
+        })
         .catch(function (err) {
           console.error('getRoomData failed', err);
-          // Fallback sample data so the sign stays visually intact.
+          if (hasLoadedRealData) {
+            // A later poll failed after real numbers were already on screen
+            // (transient network hiccup) -- leave them showing as-is rather
+            // than stomping them with placeholder sample data.
+            return;
+          }
+          // First load failed -- fall back to sample data so the sign stays
+          // visually intact rather than showing a blank page.
           renderData({
             globalStats: { goal: '$2,400,000', current: '$1,380,500', remaining: '$1,019,500', progressPct: 57.5, progressFormatted: '57.5' },
             rooms: [
@@ -699,7 +732,30 @@
             lastUpdated: 'preview'
           });
         });
+    }
 
+    // Periodic full-page reload, separate from the data polling above. This
+    // is the safety net for the OTHER kind of staleness: a future deploy
+    // that changes the HTML/CSS itself (layout, sizing, new zones) still
+    // needs this page to actually reload at least once to show up. The
+    // '?cb=' query string makes every reload a brand-new URL as far as the
+    // WebView's cache is concerned, so (unlike a plain reload) it can't be
+    // served from a stale cached copy of the page the way it was on
+    // 2026-10-16. A one-shot setTimeout, not setInterval, is correct here:
+    // the reload itself restarts this whole script, which sets a fresh
+    // timeout -- an interval would just be wasted since nothing survives
+    // a reload to count down.
+    var PAGE_RELOAD_INTERVAL_MS = 6 * 60 * 60 * 1000;   // 6 hours
+    function scheduleCacheBustedReload() {
+      setTimeout(function () {
+        window.location.href = window.location.pathname + '?cb=' + Date.now();
+      }, PAGE_RELOAD_INTERVAL_MS);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      refreshData();
+      setInterval(refreshData, REFRESH_INTERVAL_MS);
+      scheduleCacheBustedReload();
       startWordCycle();
     });
 
